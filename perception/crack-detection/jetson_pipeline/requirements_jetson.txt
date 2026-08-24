@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# Jetson Orin Nano Super - on-device inference dependencies
+#
+# Install with:
+#   python3 -m pip install -r requirements_jetson.txt
+#
+# Deliberately excludes every training dependency: no ultralytics, no torch,
+# no torchvision, no pandas, no matplotlib. export_on_device.py and
+# calibrate_int8.py use the raw TensorRT Python API only.
+# ---------------------------------------------------------------------------
+
+# --- Supplied by JetPack via apt - DO NOT pip install these -----------------
+# Installing them from PyPI replaces the CUDA-enabled aarch64 builds with
+# incompatible wheels and breaks the whole runtime.
+#
+#   tensorrt                 # JetPack 6.x ships TensorRT 10.3 (apt: nvidia-tensorrt)
+#   cuda runtime / cudart    # JetPack 6.x ships CUDA 12.6 (apt: cuda-toolkit-12-6)
+#
+# Verify with:
+#   python3 -c "import tensorrt; print(tensorrt.__version__)"
+#   dpkg -l | grep -E 'nvidia-tensorrt|cuda-toolkit'
+
+# --- Required ---------------------------------------------------------------
+numpy==1.26.4              # aarch64 wheel; keep <2.0, JetPack's cv2 is built against 1.x
+opencv-python==4.10.0.84   # letterbox + image decode for INT8 calibration
+PyYAML==6.0.2              # reads jetson_config.yaml
+pycuda==2024.1.2           # device staging buffer for the INT8 calibrator
+
+# --- Optional ---------------------------------------------------------------
+# rich renders the environment report and build tables. export_on_device.py
+# falls back to plain-text output when it is absent, so it is safe to skip on a
+# minimal image.
+rich==13.7.1
+
+# onnxruntime is only needed to run verify_exports.py on the device. Jetson
+# inference itself goes through TensorRT, so leave this out unless you intend
+# to verify the ONNX graphs on-device.
+# onnxruntime==1.18.1

@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# Crack Detection Benchmark - central configuration
+# Every tuneable parameter lives here so the Python modules stay declarative.
+# ---------------------------------------------------------------------------
+
+# Models under benchmark. `mode` is either "detect" or "segment".
+models:
+  yolo11n-seg:
+    name: YOLO11n-seg
+    weights: models/yolo11n-seg_crack_finetuned.pt   # fine-tuned by validate.py
+    mode: segment
+  yolo11s-seg:
+    name: YOLO11s-seg
+    weights: models/yolo11s-seg_crack_finetuned.pt   # fine-tuned by validate.py
+    mode: segment
+  yolo11m-seg:
+    name: YOLO11m-seg
+    weights: models/yolo11m-seg_crack_finetuned.pt   # fine-tuned by validate.py
+    mode: segment
+
+# Inference thresholds.
+conf_threshold: 0.25                    # confidence threshold
+iou_threshold: 0.45                     # IOU threshold for NMS
+
+# Compute device. "cuda" for the RTX 4070, "cpu" as fallback.
+device: cuda
+
+# Directory layout (relative to this file).
+input_dir: inputs
+output_dir: outputs
+results_dir: results
+
+# Behaviour switches.
+save_annotated: true                    # write annotated frames to outputs/
+live_preview: false                     # show a live cv2 window while processing
+
+# Timing controls.
+warmup_iterations: 10                   # dummy inferences before timing starts
+image_repeat: 20                        # repeated inferences per static image
+
+# Per-backend weight paths are now auto-discovered at app startup by scanning
+# ``models/`` for ``*_crack_finetuned.{pt,onnx,engine}`` files. Add or rename a
+# file in that directory and the next launch (or a Video Selection Refresh)
+# picks it up. The ``backends:`` block previously here has been removed.
+#
+# TensorRT INT8 engines are discovered the same way but under a separate stem,
+# ``models/{version}{size}-seg_crack_int8.engine``, so they sit alongside the
+# FP16 engine instead of replacing it. The block below records the expected
+# path for every model in the matrix. Discovery still decides what actually
+# loads, so a missing file simply drops the INT8 option for that size.
+# Build them with: python jetson_pipeline/export_all.py
+int8_engines:
+  yolo11n-seg: models/yolo11n-seg_crack_int8.engine
+  yolo11s-seg: models/yolo11s-seg_crack_int8.engine
+  yolo11m-seg: models/yolo11m-seg_crack_int8.engine
+  yolo11l-seg: models/yolo11l-seg_crack_int8.engine
+  yolo12n-seg: models/yolo12n-seg_crack_int8.engine
+  yolo12s-seg: models/yolo12s-seg_crack_int8.engine
+  yolo12m-seg: models/yolo12m-seg_crack_int8.engine
+  yolo12l-seg: models/yolo12l-seg_crack_int8.engine
+  yolo26n-seg: models/yolo26n-seg_crack_int8.engine
+  yolo26s-seg: models/yolo26s-seg_crack_int8.engine
+  yolo26m-seg: models/yolo26m-seg_crack_int8.engine
+  yolo26l-seg: models/yolo26l-seg_crack_int8.engine
+
+# Headless benchmark mode parameters.
+benchmark:
+  frame_count: 300
+  warmup_frames: 30
+  output_csv: results/benchmark_results.csv

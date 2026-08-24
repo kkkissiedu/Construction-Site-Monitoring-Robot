@@ -1,0 +1,180 @@
+# ---------------------------------------------------------------------------
+# Crack Detection Benchmark - training pipeline configuration
+# Per-model fine-tuning hyperparameters. prepare_data.py, train.py, validate.py
+# and export_models.py all read this single file so the pipeline stays
+# declarative. Each entry under `models:` is fine-tuned in two phases.
+# ---------------------------------------------------------------------------
+
+models:
+  yolo11n-seg:
+    weights: yolo11n-seg.pt
+    epochs: 50
+    batch: 16
+    imgsz: 640
+    lr0: 0.01
+    lrf: 0.001
+    warmup_epochs: 3
+    freeze_epochs: 10
+    close_mosaic: 15
+    copy_paste: 0.3
+    degrees: 45
+    label_smoothing: 0.1
+    overlap_mask: true
+    hsv_h: 0.015
+    hsv_s: 0.5
+    hsv_v: 0.4
+    mosaic: 1.0
+    patience: 50      # >= epochs disables early stopping for the budget
+    force_restart: false   # true wipes runs/train/yolo11n-seg_phase{1,2} first
+  yolo11s-seg:
+    weights: yolo11s-seg.pt
+    epochs: 30
+    batch: 16
+    imgsz: 640
+    lr0: 0.008
+    lrf: 0.0008
+    warmup_epochs: 4
+    freeze_epochs: 15
+    close_mosaic: 15
+    copy_paste: 0.3
+    degrees: 45
+    label_smoothing: 0.1
+    overlap_mask: true
+    hsv_h: 0.015
+    hsv_s: 0.5
+    hsv_v: 0.4
+    mosaic: 1.0
+    patience: 50      # >= epochs disables early stopping for the budget
+    force_restart: false   # true wipes runs/train/yolo11s-seg_phase{1,2} first
+  yolo11m-seg:
+    weights: yolo11m-seg.pt
+    epochs: 50
+    batch: 8
+    imgsz: 640
+    lr0: 0.006
+    lrf: 0.0006
+    warmup_epochs: 5
+    freeze_epochs: 20
+    close_mosaic: 12
+    copy_paste: 0.3
+    degrees: 45
+    label_smoothing: 0.1
+    overlap_mask: true
+    hsv_h: 0.015
+    hsv_s: 0.5
+    hsv_v: 0.4
+    mosaic: 1.0
+    patience: 50      # >= epochs disables early stopping for the budget
+    force_restart: false   # true wipes runs/train/yolo11m-seg_phase{1,2} first
+  yolo11l-seg:
+    weights: yolo11l-seg.pt
+    epochs: 15
+    batch: 16
+    imgsz: 640
+    lr0: 0.005
+    lrf: 0.0005
+    warmup_epochs: 5
+    freeze_epochs: 25
+    close_mosaic: 10
+    copy_paste: 0.3
+    degrees: 45
+    label_smoothing: 0.1
+    overlap_mask: true
+    hsv_h: 0.015
+    hsv_s: 0.5
+    hsv_v: 0.4
+    mosaic: 1.0
+    patience: 25
+  yolo26n-seg:
+    weights: yolo26n-seg.pt
+    epochs: 15             # Tailored to your benchmark, but patience will control it
+    batch: 48              # Standard batch for nano variants on consumer GPUs
+    imgsz: 640
+    lr0: 0.0054            # Official YOLO26n base learning rate
+    lrf: 0.0495            # Official YOLO26n learning rate fraction (steep decay)
+    warmup_epochs: 3       # Keep aligned with your phase 1 setup
+    freeze_epochs: 10      # Standard backbone freeze for your Phase 1
+    close_mosaic: 15       
+    copy_paste: 0.075      # Official YOLO26n augmentation profile (lower than YOLO11)
+    degrees: 45            # Maintained for your crack-detection task requirements
+    label_smoothing: 0.0   # Set to 0.0 (YOLO26 core filters drop/ignore this argument)
+    overlap_mask: true
+    hsv_h: 0.014           # Official tuned color space hyperparameter
+    hsv_s: 0.645           # Official tuned color space hyperparameter
+    hsv_v: 0.566           # Official tuned color space hyperparameter
+    mosaic: 0.909          # Official tuned mosaic probability
+    patience: 50           # Replicating your budget control
+    force_restart: false
+  yolo26s-seg:
+    weights: yolo26s-seg.pt
+    epochs: 15             # Aligned with your shorter yolo11s-seg test track
+    batch: 16              # Small models usually handle batch 16 cleanly on standard GPUs
+    imgsz: 640
+    lr0: 0.0048            # Tuned base learning rate for 26s
+    lrf: 0.044             # Cosine decay floor fraction
+    warmup_epochs: 4       # Matches your yolo11s warmup setup
+    freeze_epochs: 15      # Aligned with your yolo11s phase-1 freeze strategy
+    close_mosaic: 15       
+    copy_paste: 0.1        # Intermediate augmentation step between Nano and Medium
+    degrees: 45            
+    label_smoothing: 0.0   # Dropped to prevent unsupported kwarg syntax errors
+    overlap_mask: true
+    hsv_h: 0.015
+    hsv_s: 0.68            # Balanced color space jitter
+    hsv_v: 0.58
+    mosaic: 0.93           # Balanced mosaic probability
+    patience: 50           # Keeps early stopping disabled for your 30-epoch budget
+    force_restart: false
+  yolo26m-seg:
+    weights: yolo26m-seg.pt
+    epochs: 15             # Standard epoch budget for your Medium models
+    batch: 8               # Halved from 16 to protect against VRAM fragmentation
+    imgsz: 640
+    lr0: 0.0042            # Tuned base learning rate for 26m
+    lrf: 0.0385            # Matched cosine decay floor fraction
+    warmup_epochs: 4       # Gives the larger head slightly longer to stabilize
+    freeze_epochs: 20      # Aligned with your yolo11m-seg phase-1 freeze strategy
+    close_mosaic: 12       # Turn off mosaic 12 epochs before completion
+    copy_paste: 0.15       # Stepped up from Nano to leverage the larger capacity
+    degrees: 45            
+    label_smoothing: 0.0   # Dropped to prevent unsupported kwarg syntax errors
+    overlap_mask: true
+    hsv_h: 0.015           
+    hsv_s: 0.7             # Slightly more aggressive color jitter for 26m
+    hsv_v: 0.6             
+    mosaic: 0.95           # High mosaic probability to feed the wider architecture
+    patience: 50           
+    force_restart: false
+  yolo26l-seg:
+    weights: yolo26l-seg.pt
+    epochs: 15            # Matches your long-run yolo11l-seg budget
+    batch: 4               # Low batch default to prevent VRAM allocation panics
+    imgsz: 640
+    lr0: 0.0035            # Lower initial LR for deep architectures to prevent gradient explosion
+    lrf: 0.025             # Tight decay fraction for high-epoch convergence
+    warmup_epochs: 5       # Maximum warmup for model stability
+    freeze_epochs: 25      # Full 25-epoch backbone isolation during Phase 1
+    close_mosaic: 10       
+    copy_paste: 0.3        # Full augmentation profile to combat overfitting
+    degrees: 45            
+    label_smoothing: 0.0   
+    overlap_mask: true
+    hsv_h: 0.015
+    hsv_s: 0.7
+    hsv_v: 0.6
+    mosaic: 1.0            # Full mosaic utilization
+    patience: 25           # Early stopping window matches your 11l setup
+    force_restart: false
+
+# Subset of the models above to actually fine-tune when train.py runs. Remove
+# this key (or list all three) to train every model defined under `models:`.
+models_to_train:
+  - yolo26s-seg
+
+device: cuda
+workers: 0
+save_period: 10
+data_split:
+  train: 0.75
+  val: 0.15
+  test: 0.10

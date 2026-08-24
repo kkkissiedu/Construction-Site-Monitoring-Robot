@@ -1,0 +1,15 @@
+ultralytics
+torch
+torchvision
+opencv-python
+numpy
+pandas
+matplotlib
+seaborn
+pyyaml
+rich
+tqdm
+Pillow
+reportlab
+onnxruntime-gpu
+customtkinter

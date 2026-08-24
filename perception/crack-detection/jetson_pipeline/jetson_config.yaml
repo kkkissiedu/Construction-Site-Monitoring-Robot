@@ -1,0 +1,112 @@
+# ---------------------------------------------------------------------------
+# Jetson pipeline - single source of truth
+# Every path is relative to this file's directory (jetson_pipeline/) and is
+# resolved at runtime with pathlib. No script hardcodes an absolute path and no
+# script hardcodes a model name: the model set is derived from `model_matrix`
+# plus a filesystem scan of `models_dir`.
+# ---------------------------------------------------------------------------
+
+project_root: ..                          # relative to jetson_pipeline/
+models_dir: ../crack_detection_benchmark/models
+data_dir: ../crack_detection_benchmark/data/processed
+dataset_yaml: ../crack_detection_benchmark/data/processed/dataset.yaml
+
+model_matrix:
+  yolo11: [n, s, m, l]
+  yolo12: [n, s, m, l]
+  yolo26: [n, s, m, l]
+
+training:
+  imgsz: 640
+  device: cuda
+  workers: 0
+  save_period: 10
+  # per-size hyperparameters - same two-phase freeze/unfreeze protocol as the
+  # existing crack_detection_benchmark pipeline.
+  sizes:
+    n: {epochs: 150, batch: 16, lr0: 0.01,  lrf: 0.001,  freeze_epochs: 10, warmup: 3,  close_mosaic: 15, patience: 25}
+    s: {epochs: 150, batch: 12, lr0: 0.008, lrf: 0.0008, freeze_epochs: 15, warmup: 4,  close_mosaic: 15, patience: 25}
+    m: {epochs: 120, batch: 8,  lr0: 0.006, lrf: 0.0006, freeze_epochs: 20, warmup: 5,  close_mosaic: 12, patience: 25}
+    l: {epochs: 100, batch: 6,  lr0: 0.005, lrf: 0.0005, freeze_epochs: 25, warmup: 5,  close_mosaic: 10, patience: 25}
+  augmentation:
+    copy_paste: 0.3
+    degrees: 45
+    overlap_mask: true
+    hsv_h: 0.015
+    hsv_s: 0.5
+    hsv_v: 0.4
+    mosaic: 1.0
+
+export:
+  imgsz: 640
+  onnx_opset: 17
+  trt_fp16: true
+  trt_int8: true
+  int8_calib_images: 200        # number of calibration images for INT8
+  int8_calib_split: test        # which data split to use: test
+  int8_calib_cache: calibration_cache  # folder name inside models_dir
+  # TensorRT builder workspace on the LAPTOP, in MiB. TensorRT 10 otherwise
+  # defaults to all device memory, so an explicit limit only ever narrows the
+  # tactic search. Sized for an 8 GB laptop GPU; the Jetson uses
+  # jetson.workspace_mib instead, since its GPU shares system memory.
+  # Note: raising this does NOT fix the INT8 "could not find any
+  # implementation" error on the mask-prototype branch - that was tested at
+  # 2048 and 6144 MiB with identical results. See README troubleshooting.
+  workspace_mib: 6144
+
+vram_thresholds:
+  safe_8gb:  {n: 16, s: 12, m: 8,  l: 6}
+  safe_6gb:  {n: 8,  s: 8,  m: 4,  l: 4}
+  safe_4gb:  {n: 4,  s: 4,  m: 4,  l: 4}
+
+# ---------------------------------------------------------------------------
+# Extra blocks used by the scripts in this folder. Kept below the block the
+# task specification pins verbatim so a diff against the spec stays clean.
+# ---------------------------------------------------------------------------
+
+# Filename convention shared with crack_detection_benchmark/app.py:
+#   {version}{size}-seg{finetuned_suffix}.{pt,onnx,engine}
+#   {version}{size}-seg{int8_suffix}.engine
+naming:
+  finetuned_suffix: _crack_finetuned
+  int8_suffix: _crack_int8
+  jetson_fp16_suffix: _crack_finetuned_jetson
+  jetson_int8_suffix: _crack_int8_jetson
+  cache_suffix: _int8            # models/calibration_cache/{version}{size}-seg_int8.cache
+
+# Crash recovery / logging for train_missing.py and export_all.py.
+recovery:
+  max_train_attempts: 3
+  backbone_freeze_layers: 10
+  clip_grad: 10.0
+  label_smoothing: 0.1
+  training_log_csv: training_log.csv     # inside jetson_pipeline/
+  int8_failure_log: int8_failures.log    # inside jetson_pipeline/
+  min_onnx_bytes: 1048576                # ONNX smaller than 1 MiB is a failed export
+
+# verify_exports.py expectations. Shapes are (batch, channels, anchors) for the
+# detection head and (batch, protos, H, W) for the mask prototypes at imgsz=640
+# with a single class: 4 box + 1 class + 32 mask coefficients = 37.
+verify:
+  batch: 1
+  # Default contract - the YOLO11 / YOLO12 anchor-grid head.
+  expected_shapes:
+    - [1, 37, 8400]
+    - [1, 32, 160, 160]
+  # Per-version overrides. YOLO26 is NMS-free end to end: its head emits 300
+  # already-selected detections of 38 values (4 box + 1 conf + 1 class +
+  # 32 mask coefficients) instead of an 8400-cell anchor grid. Verified against
+  # the exported yolo26n/yolo26s graphs on 2026-07-29.
+  expected_shapes_by_version:
+    yolo26:
+      - [1, 300, 38]
+      - [1, 32, 160, 160]
+  # Engines are validated with a forward pass only (their binding shapes vary
+  # between TensorRT versions); ONNX graphs are shape-checked strictly.
+  strict_onnx_shapes: true
+
+# export_on_device.py runtime settings (Jetson only).
+jetson:
+  workspace_mib: 2048            # TensorRT builder workspace on Orin Nano Super
+  batch: 1                       # inference batch is fixed at 1 on device
+  min_engine_bytes: 1048576      # sanity floor for a produced .engine
