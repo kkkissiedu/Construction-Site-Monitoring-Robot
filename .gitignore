@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+build/
+dist/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Model weights and compiled engines (tracked outside git)
+*.pt
+*.pth
+*.onnx
+*.engine
+*.trt
+*.cache
+weights_cache.pt
+
+# Datasets and large binary inputs
+data/
+datasets/
+inputs/
+*.zip
+*.tar
+*.tar.gz
+
+# Training / evaluation outputs
+runs/
+outputs/
+results/
+benchmarks/
+logs/
+survey_out/
+
+# Media (regenerate; keep repo lean)
+*.mp4
+*.avi
+*.mov
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+
+# Secrets
+.env
+*.key
