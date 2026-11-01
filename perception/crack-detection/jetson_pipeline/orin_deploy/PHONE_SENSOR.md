@@ -30,3 +30,27 @@ IMU timestamp gets its own clock offset (it was ~7 h away from the frame clock).
 
 Untried: Orin-hosted hotspot (direct link) or USB via `iproxy`. Not yet tested with the phone: IMU stamps after the fix,
 the `world -> camera_link` pose transform, point-cloud rate.
+
+## Alternative: SensorStream app (chosen 2026-11-01)
+
+Humble-native C++ driver, [martijnhabers/sensorstream_driver](https://github.com/martijnhabers/sensorstream_driver), no
+patches needed. No licence file upstream, so it is cloned at a pinned commit (`e5d8350`) and never vendored.
+
+```bash
+bash setup_sensorstream.sh                     # apt deps (sudo), clone, build into ~/sensorstream_ws
+source /opt/ros/humble/setup.bash; source ~/sensorstream_ws/install/setup.bash
+ros2 run sensorstream_driver sensorstream_node # prints a QR code: Wi-Fi (port 5678) or USB (usbmuxd, port 2345)
+python3 sensorstream_probe.py --seconds 20     # rates, depth units, stamp skew -> ~/sensorstream_ws/out/probe_result.json
+```
+
+| Topic | Type |
+|---|---|
+| `color_image/compressed` | `CompressedImage` (JPEG) |
+| `depth_image` | `Image` 16UC1 |
+| `imu/data` | `Imu` |
+| `gps/fix` | `NavSatFix` |
+| `pointcloud` | `PointCloud2` |
+
+Source-reviewed: no shell calls, no telemetry. The Wi-Fi listener is open (`0.0.0.0:5678`, no auth). Gaps vs Record3D: no
+`CameraInfo` and no pose/TF (intrinsics are needed for crack width in mm), and stamps are the phone's clock, not ROS time.
+Verified without a phone: builds, listens on 5678, probe runs and reports 0 frames. Not yet tested with the phone.
