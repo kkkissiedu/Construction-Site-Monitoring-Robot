@@ -17,7 +17,7 @@ if [ "$MODE" = phone ]; then
     echo "Open the Record3DStream app, start its server and keep the screen awake."
     read -e -i "$last" -p "iPhone IP: " ip
     echo "$ip" > ~/.phone_ip
-    ros2 run ros2_driver iphone_sensor_node --ros-args -p host:="$ip" &
+    ros2 run ros2_driver iphone_sensor_node --ros-args -p host:="$ip" -p heavy_processing:=false &   # depth filtering and point cloud cost a core, the demo ignores them
 else
     echo "Rehearsal: replaying test images as the camera."
     python3 fake_camera.py heldout/images --hz 8 --seconds-per-image 4 &
