@@ -17,6 +17,10 @@ sides of the system in one place.
   Ultralytics on the device).
 - **On-device survey tooling**: capture → segment → per-detection **severity
   ranking** (from the crack mask) → GPS-tagged log → interactive defect map.
+- **Rover drive controller**: an STM32F103C6 drives the four wheel motors from
+  `V <left> <right>` commands over a UART, with a failsafe stop and a watchdog.
+  Bench-tested with the wheels lifted; not yet connected to the Jetson. See
+  `robotics/rover-firmware/README.md`.
 
 ## Repository layout
 
@@ -26,7 +30,9 @@ perception/
     benchmark/        # training, validation, export, benchmark app (laptop)
     jetson_pipeline/  # ONNX/TensorRT export pipeline + docs
       nano_deploy/    # Jetson Nano runtime: engine inference, camera, survey, map
-robotics/             # (planned) navigation, control, platform integration
+robotics/
+  rover-firmware/     # STM32F103C6 drive controller: UART commands, BTS7960 PWM
+                      # (planned) navigation, control, platform integration
 docs/                 # (planned) design notes, results, ADRs
 ```
 
@@ -49,6 +55,8 @@ Model weights, datasets, compiled engines and run outputs are intentionally
 - NVIDIA Jetson Nano (Tegra X1, 4 GB) — edge inference
 - CSI camera (IMX219) — perception input
 - U-Blox GNSS receiver — geolocation
+- Four DC gearmotors on BTS7960 drivers, run by an STM32F103C6 (Blue Pill), on a
+  3S Li-ion pack
 
 See `perception/crack-detection/jetson_pipeline/nano_deploy/README.md` for the
 device setup, runtime, and honest performance notes.
