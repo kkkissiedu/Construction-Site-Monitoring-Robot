@@ -72,4 +72,4 @@ A debug probe on the SWD header (PA13, PA14) avoids the wire changes.
 
 ## Status
 
-Bench-tested with the wheels lifted: each motor alone, forward and spin commands, the failsafe, `ID`, and the `C` settings (16 kHz PWM, speed cap, direction flip and side swap all behave as described). `BOOT` is not yet tested on hardware. The Jetson side is not connected yet.
+Bench-tested with the wheels lifted: each motor alone, forward and spin commands, the failsafe, `ID`, and the `C` settings (16 kHz PWM, speed cap, direction flip and side swap all behave as described). `BOOT` is not yet tested on hardware. The Jetson is connected and drives the rover through `robotics/rover-bridge/`.
