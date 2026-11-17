@@ -33,7 +33,7 @@ perception/
       nano_deploy/    # Jetson Nano runtime: engine inference, camera, survey, map
 robotics/
   rover-firmware/     # STM32F103C6 drive controller: UART commands, BTS7960 PWM
-  rover-bridge/       # Jetson ROS 2 node: /cmd_vel to the rover over a UART
+  rover-bridge/       # Jetson ROS 2 node and phone remote: /cmd_vel to the rover over a UART
                       # (planned) navigation, control, platform integration
 docs/                 # (planned) design notes, results, ADRs
 ```
