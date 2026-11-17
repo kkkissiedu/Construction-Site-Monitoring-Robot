@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Rover Remote</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #1b2230; --ring: #2e3b52; --knob: #4f8cff;
+    --ok: #2ecc71; --bad: #e74c3c; --text: #e8edf5; --muted: #8b97ab;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
+    touch-action: none; overscroll-behavior: none; overflow: hidden;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  .app {
+    height: 100%; display: flex; flex-direction: column; gap: 14px;
+    padding: max(14px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+  }
+  header { display: flex; align-items: center; justify-content: space-between; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .pill {
+    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    border-radius: 999px; background: var(--panel); font-size: 13px; color: var(--muted);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); }
+  .dot.on { background: var(--ok); }
+  .stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  #pad {
+    width: min(78vw, 52vh); aspect-ratio: 1; border-radius: 50%; position: relative;
+    background: radial-gradient(circle at 50% 50%, #243047 0%, var(--panel) 70%);
+    border: 2px solid var(--ring); touch-action: none;
+  }
+  #pad::before, #pad::after { content: ""; position: absolute; background: var(--ring); opacity: .55; }
+  #pad::before { left: 50%; top: 8%; bottom: 8%; width: 2px; transform: translateX(-50%); }
+  #pad::after  { top: 50%; left: 8%; right: 8%; height: 2px; transform: translateY(-50%); }
+  #knob {
+    position: absolute; left: 50%; top: 50%; width: 36%; aspect-ratio: 1; margin: -18% 0 0 -18%;
+    border-radius: 50%; background: var(--knob); box-shadow: 0 6px 18px rgba(0,0,0,.45);
+    pointer-events: none;
+  }
+  .readout { text-align: center; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .speed { background: var(--panel); border-radius: 14px; padding: 12px 16px; }
+  .speed label { display: block; font-size: 14px; margin-bottom: 8px; }
+  input[type=range] { width: 100%; accent-color: var(--knob); touch-action: pan-x; }
+  #stop {
+    height: 16vh; min-height: 84px; border: 0; border-radius: 18px; background: var(--bad);
+    color: #fff; font-size: 30px; font-weight: 700; letter-spacing: 2px; touch-action: manipulation;
+  }
+  #stop:active { filter: brightness(.85); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Rover remote</h1>
+    <div class="pill"><span id="dot" class="dot"></span><span id="link">connecting</span></div>
+  </header>
+
+  <div class="stage"><div id="pad"><div id="knob"></div></div></div>
+  <div class="readout" id="readout">hold the stick to drive, let go to stop</div>
+
+  <div class="speed">
+    <label for="speed" id="speedLabel">Speed 40%</label>
+    <input id="speed" type="range" min="10" max="100" step="5" value="40">
+  </div>
+
+  <button id="stop">STOP</button>
+</div>
+
+<script>
+const KEY       = new URLSearchParams(location.search).get('key') || '';
+const DEADZONE  = 0.12;
+const SEND_MS   = 100;
+
+const pad      = document.getElementById('pad');
+const knob     = document.getElementById('knob');
+const slider   = document.getElementById('speed');
+const label    = document.getElementById('speedLabel');
+const readout  = document.getElementById('readout');
+const dot      = document.getElementById('dot');
+const linkText = document.getElementById('link');
+
+let dragging = false, sx = 0, sy = 0;
+let maxLinear = 0.2, lastOk = 0;
+
+function setLink(ok) {
+  if (ok) lastOk = Date.now();
+  const alive = Date.now() - lastOk < 2500;
+  dot.classList.toggle('on', alive);
+  linkText.textContent = alive ? 'connected' : 'no link, rover stops';
+}
+
+async function call(method, path, body) {
+  try {
+    const res = await fetch(path + '?key=' + encodeURIComponent(KEY), {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: method === 'POST' ? JSON.stringify(body || {}) : undefined,
+    });
+    setLink(res.ok);
+    return res.ok ? await res.json() : null;
+  } catch (e) {
+    setLink(false);
+    return null;
+  }
+}
+
+function showSpeed() {
+  const pct = Number(slider.value);
+  label.textContent = 'Speed ' + pct + '%  (top ' + (pct / 100 * maxLinear).toFixed(2) + ' m/s)';
+}
+
+function moveKnob(dx, dy) {
+  const r = pad.getBoundingClientRect().width / 2;
+  knob.style.transform = 'translate(' + (dx * r * 0.64) + 'px,' + (-dy * r * 0.64) + 'px)';
+}
+
+function updateStick(ev) {
+  const r  = pad.getBoundingClientRect();
+  const rad = r.width / 2;
+  let dx = (ev.clientX - (r.left + rad)) / rad;
+  let dy = ((r.top + rad) - ev.clientY) / rad;
+  const len = Math.hypot(dx, dy);
+  if (len > 1) { dx /= len; dy /= len; }
+  moveKnob(dx, dy);
+  sx = Math.abs(dx) < DEADZONE ? 0 : dx;
+  sy = Math.abs(dy) < DEADZONE ? 0 : dy;
+  readout.textContent = 'x ' + sx.toFixed(2) + '   y ' + sy.toFixed(2);
+}
+
+function release() {
+  if (!dragging) return;
+  dragging = false; sx = 0; sy = 0;
+  moveKnob(0, 0);
+  readout.textContent = 'stopped';
+  call('POST', '/stop');
+}
+
+pad.addEventListener('pointerdown', (e) => { dragging = true; pad.setPointerCapture(e.pointerId); updateStick(e); });
+pad.addEventListener('pointermove', (e) => { if (dragging) updateStick(e); });
+pad.addEventListener('pointerup', release);
+pad.addEventListener('pointercancel', release);
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
+window.addEventListener('blur', release);
+
+document.getElementById('stop').addEventListener('click', () => {
+  dragging = false; sx = 0; sy = 0; moveKnob(0, 0);
+  readout.textContent = 'STOP pressed';
+  call('POST', '/stop');
+});
+
+slider.addEventListener('input', showSpeed);
+
+setInterval(() => {
+  if (dragging) call('POST', '/drive', { x: +sx.toFixed(2), y: +sy.toFixed(2), scale: Number(slider.value) / 100 });
+}, SEND_MS);
+
+setInterval(async () => {
+  const info = await call('GET', '/ping');
+  if (info) { maxLinear = info.max_linear; showSpeed(); }
+  else setLink(false);
+}, 1000);
+
+showSpeed();
+</script>
+</body>
+</html>
