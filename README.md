@@ -19,8 +19,9 @@ sides of the system in one place.
   ranking** (from the crack mask) → GPS-tagged log → interactive defect map.
 - **Rover drive controller**: an STM32F103C6 drives the four wheel motors from
   `V <left> <right>` commands over a UART, with a failsafe stop and a watchdog.
-  Bench-tested with the wheels lifted; not yet connected to the Jetson. See
-  `robotics/rover-firmware/README.md`.
+  A ROS 2 node on the Jetson turns `/cmd_vel` into those commands. Bench-tested
+  with the wheels lifted, not yet driven on the floor. See
+  `robotics/rover-firmware/README.md` and `robotics/rover-bridge/README.md`.
 
 ## Repository layout
 
@@ -32,6 +33,7 @@ perception/
       nano_deploy/    # Jetson Nano runtime: engine inference, camera, survey, map
 robotics/
   rover-firmware/     # STM32F103C6 drive controller: UART commands, BTS7960 PWM
+  rover-bridge/       # Jetson ROS 2 node: /cmd_vel to the rover over a UART
                       # (planned) navigation, control, platform integration
 docs/                 # (planned) design notes, results, ADRs
 ```
