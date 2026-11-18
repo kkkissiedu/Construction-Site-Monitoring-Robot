@@ -204,9 +204,15 @@ def main() -> None:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except Exception:
+        if rclpy.ok():                  # an error while ROS is closing down is expected, any other is not
+            raise
     finally:
         server.shutdown()
-        node.stop()
+        try:
+            node.stop()
+        except Exception:               # ROS may already be closed; the bridge stops the rover on silence anyway
+            pass
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
