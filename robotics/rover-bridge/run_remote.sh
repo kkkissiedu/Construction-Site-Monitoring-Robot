@@ -4,8 +4,12 @@
 cd "$(dirname "$0")" || exit 1
 source /opt/ros/humble/setup.bash
 
+python3 rover_imu.py &
+IMU=$!
+sleep 3          # the gyro bias is measured in the first 2 s: keep the rover still
+
 python3 rover_bridge.py &
 BRIDGE=$!
-trap 'kill -INT $BRIDGE 2>/dev/null; wait $BRIDGE 2>/dev/null' EXIT
+trap 'kill -INT $BRIDGE $IMU 2>/dev/null; wait $BRIDGE $IMU 2>/dev/null' EXIT
 
 python3 rover_remote.py
