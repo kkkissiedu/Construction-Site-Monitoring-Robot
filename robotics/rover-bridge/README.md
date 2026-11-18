@@ -22,7 +22,10 @@ The port is `/dev/ttyTHS1`. The `jetson` user is already in `dialout`, so no `su
 | `rover_bridge.py` | ROS 2 node: `/cmd_vel` to `V left right`, with a timeout stop and automatic reconnect |
 | `rover_remote.py` | ROS 2 node: serves a phone web page and publishes the joystick as `/cmd_vel` |
 | `remote.html` | the phone page: touch joystick, speed slider, STOP button |
-| `run_remote.sh` | starts the bridge and the phone remote together |
+| `run_remote.sh` | starts the IMU node, the bridge and the phone remote together |
+| `mpu6050.py` | reads the MPU-6050 (GY-521) over I2C with no extra libraries; `probe` and `axes` modes |
+| `rover_imu.py` | ROS 2 node: publishes the IMU as `/imu/data_raw` at 100 Hz, gyro bias removed |
+| `turn_control.py` | pure-Python turn controller (gyro feedback, saturation, spin and arc modes) |
 
 Copy both to the Jetson (for example `~/rover_bridge/`) and run from that folder. ROS 2 Humble and `pyserial` are needed.
 
@@ -75,10 +78,50 @@ Full power with the motors stalled against the floor draws a lot of current from
 | `track_width` | 0.24 | metres, centre of the left wheel to centre of the right wheel |
 | `max_speed` | 0.5 | m/s at full command (255). **Placeholder, calibrate it** |
 | `speed_limit` | 100 | cap sent to the firmware at start-up, out of 255 |
-| `send_rate` | 10 | Hz, must stay well inside the firmware failsafe (500 ms) |
+| `send_rate` | 20 | Hz, the turn loop runs at this rate; must stay well inside the firmware failsafe (500 ms) |
 | `cmd_timeout` | 0.5 | seconds without `/cmd_vel` before the rover is stopped |
 
 `linear.x` and `angular.z` follow the ROS convention: positive angular is a left turn (counter-clockwise).
+
+## Closed-loop turning (IMU)
+
+A GY-521 (MPU-6050) on the Jetson's I2C bus lets the bridge close the loop on the turn rate. There are no encoders, so the loop adds power until the gyro shows the requested rate, and the output saturates at the motor command range (±255), the PWM resolution. That is why no wheel-speed estimate is needed.
+
+| Jetson pin | IMU |
+|------------|-----|
+| 1 (3.3 V) | VCC |
+| 3 (SDA, `/dev/i2c-7`) | SDA |
+| 5 (SCL) | SCL |
+| 9 (GND) | GND |
+
+Power it from 3.3 V: the board's pull-ups tie to VCC, and 5 V would reach the Jetson's pins. On this rover the board's axes are X forward, Y left, Z up (the ROS convention), so a positive gyro Z is a left turn, the same sign as `/cmd_vel`. `python3 mpu6050.py axes` finds the axes from a nose-up and a right-side-down tilt.
+
+```bash
+python3 rover_imu.py &        # keep the rover still for the first 2 s
+python3 rover_bridge.py       # closed loop when /imu/data_raw is flowing, open loop otherwise
+```
+
+The command is the kinematic feed-forward plus `kp * error + ki * integral(error)` on the gyro error, optionally minus a weighted accelerometer damping term (`acc_weight`, off by default). The integrator stops growing while the output is saturated. Turn modes (`turn_mode`):
+
+| Mode | Behaviour |
+|------|-----------|
+| `open` | feed-forward only, no feedback |
+| `spin` | the wheels counter-rotate for a turn on the spot |
+| `arc` | the inner wheel never reverses, so the rover turns while rolling forward and needs far less torque |
+| `auto` | spin first; if the output sits at full power for `stall_time` (1 s) without the gyro reaching half of the requested rate, switch to an arc until the turn request ends |
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `turn_mode` | `auto` | see above |
+| `turn_kp` | 50 | command units per rad/s of error |
+| `turn_ki` | 120 | command units per rad of accumulated error |
+| `acc_weight` | 0 | weight of the accelerometer damping term |
+| `stall_time` | 1.0 | seconds at full power without progress before `auto` switches |
+| `arc_ratio` | 1.5 | forward speed of an arc relative to the pivot speed |
+| `imu_offset` | 0.07 | metres the IMU sits ahead of the turning centre |
+| `imu_timeout` | 0.3 | seconds without IMU data before falling back to open loop |
+
+A feedback loop cannot add torque: if full power cannot turn the rover, the loop sits at saturation, which is what the `auto` fallback to an arc is for. The loop was simulated against model rovers with weak torque and checked on the rover with the wheels lifted (spin ramps to full power, then the fallback to an arc).
 
 ## Calibrating `max_speed`
 
@@ -97,4 +140,4 @@ The rover has no encoders, so the node assumes speed is proportional to the comm
 
 ## Status
 
-Bench-tested with the wheels lifted: `rover_link.py` drive, and the node driving forward and turning left from `/cmd_vel`, stopping on its own when the messages stop. The phone remote was driven from a phone on the floor: the rover moves only weakly and does not turn, and motor torque is the limit, not the software. `max_speed` is still uncalibrated.
+Bench-tested with the wheels lifted: `rover_link.py` drive, and the node driving forward and turning left from `/cmd_vel`, stopping on its own when the messages stop. The phone remote was driven from a phone on the floor: the rover moves only weakly and does not turn, and motor torque is the limit, not the software. `max_speed` is still uncalibrated. The IMU is verified (100 Hz, X forward, Y left, Z up, left turn reads positive) and the turn controller passed its simulation and a lifted-wheel run (spin saturates, then `auto` falls back to an arc); it has not yet been tried on the floor.
