@@ -25,6 +25,9 @@ The port is `/dev/ttyTHS1`. The `jetson` user is already in `dialout`, so no `su
 | `run_remote.sh` | starts the IMU node, the bridge and the phone remote together |
 | `mpu6050.py` | reads the MPU-6050 (GY-521) over I2C with no extra libraries; `probe` and `axes` modes |
 | `rover_imu.py` | ROS 2 node: publishes the IMU as `/imu/data_raw` at 100 Hz, gyro bias removed |
+| `rover_autostart.sh` | supervisor: starts the IMU node, bridge and phone remote and restarts them if one stops |
+| `install_autostart.sh` | adds a user-cron `@reboot` line so the rover software starts at boot (`remove` undoes it) |
+| `calibrate_deadband.py` | ramps both sides until you stop it, to find the smallest command that moves the rover |
 | `turn_control.py` | pure-Python turn controller (gyro feedback, saturation, spin and arc modes) |
 
 Copy both to the Jetson (for example `~/rover_bridge/`) and run from that folder. ROS 2 Humble and `pyserial` are needed.
@@ -122,6 +125,14 @@ The command is the kinematic feed-forward plus `kp * error + ki * integral(error
 | `imu_timeout` | 0.3 | seconds without IMU data before falling back to open loop |
 
 A feedback loop cannot add torque: if full power cannot turn the rover, the loop sits at saturation, which is what the `auto` fallback to an arc is for. The loop was simulated against model rovers with weak torque and checked on the rover with the wheels lifted (spin ramps to full power, then the fallback to an arc).
+
+## Start at boot and Wi-Fi
+
+`bash install_autostart.sh` once on the Jetson; from then on the software starts about 20 s after power-on (keep the rover still for the first few seconds, the gyro bias is measured then). Settings are at the top of `rover_autostart.sh`; logs are in `~/rover_logs/`. The Jetson joins any saved Wi-Fi, including a phone hotspot (`nmcli dev wifi connect "<name>" --ask`). On a hotspot the address changes, so open `http://ubuntu.local:8080/?key=<key>`.
+
+## Dead zone
+
+Below a certain command the wheels do not turn at all. `deadband` (default 60 of 255) lifts every non-zero wheel command over that zone, so the stick's low end moves the rover and the feed-forward is no longer too small. Find your value with `calibrate_deadband.py` and set `DEADBAND` in `rover_autostart.sh`.
 
 ## Calibrating `max_speed`
 

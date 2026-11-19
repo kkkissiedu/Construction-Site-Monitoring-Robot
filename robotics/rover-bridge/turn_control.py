@@ -14,6 +14,7 @@ TURN_THRESHOLD  = 0.05     # rad/s, a requested turn rate below this counts as "
 IDLE_RESET      = 0.5      # s without a turn request before an arc latch is released
 ALPHA_FILTER    = 0.2      # smoothing of the accelerometer's angular-acceleration estimate
 ACC_DAMPING     = 0.1      # s, scales the accelerometer term relative to kp
+DEADBAND        = 0.0      # motor command below which the wheels do not turn at all
 
 
 # %% Helpers
@@ -34,6 +35,13 @@ def fit(left: float, right: float) -> tuple:
     return clamp(left, -FULL_SCALE, FULL_SCALE), clamp(right, -FULL_SCALE, FULL_SCALE)
 
 
+def lift(value: float, deadband: float) -> int:
+    """Skip the motor dead zone: any non-zero command starts at deadband, full scale stays full scale."""
+    if abs(value) < 1.0:
+        return 0
+    return round(math.copysign(deadband + abs(value) * (FULL_SCALE - deadband) / FULL_SCALE, value))
+
+
 # %% Controller
 class TurnController:
     """Turn-rate loop on the gyro.
@@ -50,11 +58,14 @@ class TurnController:
     reverses) and "auto": spin first, and if the output sits at full scale for stall_time seconds
     without the gyro reaching stall_ratio of the requested rate, fall back to an arc until the turn
     request ends.
+
+    deadband: the smallest command that makes a wheel turn. The loop works in "effective" units
+    (0 to FULL_SCALE) and the last step lifts every non-zero wheel command over that dead zone.
     """
 
     def __init__(self, track: float, max_speed: float, mode: str = "auto", kp: float = 50.0, ki: float = 120.0,
                  acc_weight: float = 0.0, imu_offset: float = 0.07, arc_ratio: float = 1.5,
-                 stall_time: float = 1.0, stall_ratio: float = 0.5) -> None:
+                 stall_time: float = 1.0, stall_ratio: float = 0.5, deadband: float = DEADBAND) -> None:
         self.track       = track
         self.max_speed   = max_speed
         self.mode        = mode
@@ -65,6 +76,7 @@ class TurnController:
         self.arc_ratio   = arc_ratio
         self.stall_time  = stall_time
         self.stall_ratio = stall_ratio
+        self.deadband    = deadband
         self.reset()
 
     def reset(self) -> None:
@@ -151,4 +163,4 @@ class TurnController:
             left, right = fit(left_raw, right_raw)
 
         info["saturated"] = saturated
-        return round(left), round(right), info
+        return lift(left, self.deadband), lift(right, self.deadband), info

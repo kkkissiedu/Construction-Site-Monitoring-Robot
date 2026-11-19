@@ -41,6 +41,7 @@ STALL_TIME   = 1.0       # s at full power without progress before auto switches
 ARC_RATIO    = 1.5       # forward speed of an arc relative to the pivot speed
 IMU_OFFSET   = 0.07      # m, how far ahead of the turning centre the IMU sits
 IMU_TIMEOUT  = 0.3       # s without an IMU message before falling back to open loop
+DEADBAND     = 60.0      # motor command (of 255) below which the wheels do not move; measure with calibrate_deadband.py
 
 
 # %% Node
@@ -64,6 +65,7 @@ class RoverBridge(Node):
         self.declare_parameter("arc_ratio",   ARC_RATIO)
         self.declare_parameter("imu_offset",  IMU_OFFSET)
         self.declare_parameter("imu_timeout", IMU_TIMEOUT)
+        self.declare_parameter("deadband",    DEADBAND)
 
         self.port        = self.get_parameter("port").value
         self.baud        = self.get_parameter("baud").value
@@ -82,6 +84,7 @@ class RoverBridge(Node):
             imu_offset  = self.get_parameter("imu_offset").value,
             arc_ratio   = self.get_parameter("arc_ratio").value,
             stall_time  = self.get_parameter("stall_time").value,
+            deadband    = self.get_parameter("deadband").value,
         )
 
         self.link       = None
