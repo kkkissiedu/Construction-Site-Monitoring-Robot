@@ -26,5 +26,10 @@ fi
 
 command -v dnsmasq > /dev/null && echo "dnsmasq      : found" || echo "dnsmasq      : not found (needed for the access point to hand out addresses)"
 echo
+AP_PRIO=$(nmcli -g connection.autoconnect-priority con show rover-ap 2>/dev/null)
+if [ -z "$AP_PRIO" ]; then echo "Own network  : not set up (bash setup_ap.sh)"
+elif [ "$AP_PRIO" -gt 10 ]; then echo "Own network  : on at every boot (priority $AP_PRIO)"
+else echo "Own network  : only when no saved network is in range (priority $AP_PRIO)"; fi
+echo
 echo "Saved Wi-Fi networks (higher priority is tried first):"
 nmcli -t -f NAME,TYPE,AUTOCONNECT-PRIORITY con show | awk -F: '$2=="802-11-wireless"{printf "  %-24s priority %s\n", $1, $3}'

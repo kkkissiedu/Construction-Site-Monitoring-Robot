@@ -135,7 +135,16 @@ A feedback loop cannot add torque: if full power cannot turn the rover, the loop
 
 ### The Jetson's own Wi-Fi network
 
-When neither home Wi-Fi nor a phone hotspot is around, the Jetson can host its own network. Run `ssh -t orin "bash ~/rover_bridge/setup_ap.sh"` once (it asks for the Jetson's sudo password). It creates `rover-jetson` (WPA2, 2.4 GHz, a random password kept in `~/.rover_ap_password`, the Jetson at `10.42.0.1`) and orders the saved networks: home Wi-Fi, then other saved networks, then `rover-jetson`. Add `now` to switch to it immediately. The phone page is then `http://10.42.0.1:8080/?key=<key>`. While the Jetson hosts the network it has no internet, and NetworkManager does not move back to a client network on its own until the next reboot or `nmcli con up <name>`. `bash check_network.sh` shows the current state.
+The Jetson hosts its own network, `rover-jetson`, so the rover works anywhere with no router or phone hotspot: switch it on, join `rover-jetson` on the phone, open `http://10.42.0.1:8080/?key=<key>`. Run `ssh -t orin "bash ~/rover_bridge/setup_ap.sh"` once (it asks for the Jetson's sudo password). It creates the network (WPA2, 2.4 GHz, a random password kept in `~/.rover_ap_password`, the Jetson at `10.42.0.1`) and gives it the highest priority, so it comes up at every boot, together with the rover software (started by cron). Other modes:
+
+| Command | Effect |
+|---------|--------|
+| `bash setup_ap.sh` | own network on at every boot (default) |
+| `bash setup_ap.sh fallback` | own network only when no saved network is in range |
+| `bash setup_ap.sh online` | own network off; join the best saved network now (for apt, pip, updates) |
+| `bash setup_ap.sh remove` | delete the own network |
+
+Add `now` to switch immediately. While the Jetson hosts the network it has no internet. A phone keeps its own mobile data for internet. Waveshare's `ugv_jetson` does the same job with AccessPopup, which checks every 2 minutes and only starts its hotspot when no known network is in range. `bash check_network.sh` shows the current state.
 
 ## Dead zone
 

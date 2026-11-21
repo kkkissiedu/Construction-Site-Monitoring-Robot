@@ -1,9 +1,11 @@
 #!/bin/bash
-# Gives the Jetson its own Wi-Fi network as a last-resort fallback, and sets the order it tries networks in.
-# Run once on the Jetson (it asks for the sudo password):   bash setup_ap.sh
-#   bash setup_ap.sh now      also switches to the new network straight away (drops the current Wi-Fi)
-#   bash setup_ap.sh remove   deletes the network again
-# Order of preference: home Wi-Fi, then any other saved network (for example a phone hotspot), then this one.
+# The Jetson's own Wi-Fi network ("rover-jetson") and the order the Jetson tries networks in. Run on the Jetson;
+# it asks for the sudo password. Re-running is safe and does not drop a connected phone.
+#   bash setup_ap.sh              own network is on at every boot (the default, "rover" mode)
+#   bash setup_ap.sh fallback     own network only when no saved network is in range
+#   bash setup_ap.sh online       own network off; join the best saved network now (for apt, pip, updates)
+#   bash setup_ap.sh remove       delete the own network
+# Add "now" to switch immediately:  bash setup_ap.sh rover now   (the Jetson leaves its current Wi-Fi)
 SSID="rover-jetson"
 CON="rover-ap"
 ADDRESS="10.42.0.1/24"       # the Jetson's fixed address on its own network
@@ -11,15 +13,48 @@ BAND="bg"                    # 2.4 GHz: the most compatible band
 CHANNEL=6
 PASS_FILE="$HOME/.rover_ap_password"
 
+MODE="${1:-rover}"
+NOW="$2"
+[ "$MODE" = "now" ] && { MODE="rover"; NOW="now"; }
+
 IFACE=$(nmcli -t -f DEVICE,TYPE dev | awk -F: '$2=="wifi"{print $1; exit}')
 [ -n "$IFACE" ] || { echo "no Wi-Fi device found"; exit 1; }
 
 sudo -v || exit 1
 
-if [ "$1" = "remove" ]; then
-    sudo nmcli con delete "$CON" && echo "removed $CON"
-    exit 0
-fi
+exists() { nmcli -t -f NAME con show | grep -qx "$CON"; }
+
+# saved client networks, best first
+set_client_priorities() {
+    nmcli -t -f NAME,TYPE con show | awk -F: '$2=="802-11-wireless"{print $1}' | while read -r name; do
+        [ "$name" = "$CON" ] && continue
+        case "$name" in
+            HUAWEI*|Goliath*) prio=10 ;;
+            *)                prio=5  ;;
+        esac
+        sudo nmcli con modify "$name" connection.autoconnect-priority "$prio"
+    done
+}
+
+case "$MODE" in
+    remove)
+        sudo nmcli con delete "$CON" && echo "removed $CON"
+        exit 0
+        ;;
+    online)
+        exists && sudo nmcli con modify "$CON" connection.autoconnect-priority -10
+        set_client_priorities
+        echo "own network is off from now on; trying the saved networks, best first"
+        nmcli -t -f NAME,TYPE,AUTOCONNECT-PRIORITY con show | awk -F: '$2=="802-11-wireless" && $1!="'"$CON"'"{print $3":"$1}' \
+            | sort -t: -k1 -nr | cut -d: -f2- | while read -r name; do
+            sudo nmcli con up "$name" > /dev/null 2>&1 && { echo "connected to $name"; exit 0; }
+        done
+        exit 0
+        ;;
+    rover)    AP_PRIO=100 ;;
+    fallback) AP_PRIO=-10 ;;
+    *) echo "unknown mode: $MODE"; exit 1 ;;
+esac
 
 # the password is made once and kept private; it never goes into the repo
 if [ ! -s "$PASS_FILE" ]; then
@@ -29,31 +64,28 @@ PASS=$(cat "$PASS_FILE")
 
 command -v dnsmasq > /dev/null || echo "note: dnsmasq not found; NetworkManager may not hand out addresses (sudo apt install dnsmasq-base)"
 
-sudo nmcli con delete "$CON" > /dev/null 2>&1
-sudo nmcli con add type wifi ifname "$IFACE" con-name "$CON" ssid "$SSID" \
-    connection.autoconnect yes connection.autoconnect-priority -10 \
-    802-11-wireless.mode ap 802-11-wireless.band "$BAND" 802-11-wireless.channel "$CHANNEL" \
-    802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.proto rsn \
-    802-11-wireless-security.pairwise ccmp 802-11-wireless-security.group ccmp \
-    802-11-wireless-security.psk "$PASS" \
-    ipv4.method shared ipv4.addresses "$ADDRESS" ipv6.method ignore || exit 1
-
-# the saved client networks: home Wi-Fi first, anything else after it, all above the Jetson's own network
-nmcli -t -f NAME,TYPE con show | awk -F: '$2=="802-11-wireless"{print $1}' | while read -r name; do
-    [ "$name" = "$CON" ] && continue
-    case "$name" in
-        HUAWEI*|Goliath*) prio=10 ;;
-        *)                prio=5  ;;
-    esac
-    sudo nmcli con modify "$name" connection.autoconnect-priority "$prio" && echo "priority $prio: $name"
-done
+SETTINGS=(
+    connection.autoconnect yes connection.autoconnect-priority "$AP_PRIO"
+    802-11-wireless.ssid "$SSID" 802-11-wireless.mode ap 802-11-wireless.band "$BAND" 802-11-wireless.channel "$CHANNEL"
+    802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.proto rsn
+    802-11-wireless-security.pairwise ccmp 802-11-wireless-security.group ccmp
+    802-11-wireless-security.psk "$PASS"
+    ipv4.method shared ipv4.addresses "$ADDRESS" ipv6.method ignore
+)
+if exists; then
+    sudo nmcli con modify "$CON" "${SETTINGS[@]}" || exit 1       # changes apply the next time it starts
+else
+    sudo nmcli con add type wifi ifname "$IFACE" con-name "$CON" "${SETTINGS[@]}" || exit 1
+fi
+set_client_priorities
 
 echo
+echo "Mode         : $MODE (own network priority $AP_PRIO)"
 echo "Network name : $SSID"
 echo "Password     : $PASS   (also in $PASS_FILE)"
 echo "Phone page   : http://${ADDRESS%/*}:8080/?key=$(cat "$HOME/.rover_remote_key" 2>/dev/null)"
 
-if [ "$1" = "now" ]; then
+if [ "$NOW" = "now" ]; then
     echo "switching to $SSID now..."
     sudo nmcli con up "$CON"
 fi
