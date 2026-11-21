@@ -27,6 +27,8 @@ The port is `/dev/ttyTHS1`. The `jetson` user is already in `dialout`, so no `su
 | `rover_imu.py` | ROS 2 node: publishes the IMU as `/imu/data_raw` at 100 Hz, gyro bias removed |
 | `rover_autostart.sh` | supervisor: starts the IMU node, bridge and phone remote and restarts them if one stops |
 | `install_autostart.sh` | adds a user-cron `@reboot` line so the rover software starts at boot (`remove` undoes it) |
+| `setup_ap.sh` | one-time: gives the Jetson its own Wi-Fi network (`rover-jetson`) as a last-resort fallback and sets the network order |
+| `check_network.sh` | shows the Wi-Fi connection, address, whether the remote answers, and the phone URL |
 | `calibrate_deadband.py` | ramps both sides until you stop it, to find the smallest command that moves the rover |
 | `motor_test.py` | pulses each motor in turn to check wheel position and direction (stop the rover software first) |
 | `turn_control.py` | pure-Python turn controller (gyro feedback, saturation, spin and arc modes) |
@@ -130,6 +132,10 @@ A feedback loop cannot add torque: if full power cannot turn the rover, the loop
 ## Start at boot and Wi-Fi
 
 `bash install_autostart.sh` once on the Jetson; from then on the software starts about 20 s after power-on (keep the rover still for the first few seconds, the gyro bias is measured then). Settings are at the top of `rover_autostart.sh`; logs are in `~/rover_logs/`. The Jetson joins any saved Wi-Fi, including a phone hotspot (`nmcli dev wifi connect "<name>" --ask`). On a hotspot the address changes, so open `http://ubuntu.local:8080/?key=<key>`.
+
+### The Jetson's own Wi-Fi network
+
+When neither home Wi-Fi nor a phone hotspot is around, the Jetson can host its own network. Run `ssh -t orin "bash ~/rover_bridge/setup_ap.sh"` once (it asks for the Jetson's sudo password). It creates `rover-jetson` (WPA2, 2.4 GHz, a random password kept in `~/.rover_ap_password`, the Jetson at `10.42.0.1`) and orders the saved networks: home Wi-Fi, then other saved networks, then `rover-jetson`. Add `now` to switch to it immediately. The phone page is then `http://10.42.0.1:8080/?key=<key>`. While the Jetson hosts the network it has no internet, and NetworkManager does not move back to a client network on its own until the next reboot or `nmcli con up <name>`. `bash check_network.sh` shows the current state.
 
 ## Dead zone
 
