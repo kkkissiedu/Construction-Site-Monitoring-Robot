@@ -28,6 +28,7 @@ The port is `/dev/ttyTHS1`. The `jetson` user is already in `dialout`, so no `su
 | `rover_autostart.sh` | supervisor: starts the IMU node, bridge and phone remote and restarts them if one stops |
 | `install_autostart.sh` | adds a user-cron `@reboot` line so the rover software starts at boot (`remove` undoes it) |
 | `calibrate_deadband.py` | ramps both sides until you stop it, to find the smallest command that moves the rover |
+| `motor_test.py` | pulses each motor in turn to check wheel position and direction (stop the rover software first) |
 | `turn_control.py` | pure-Python turn controller (gyro feedback, saturation, spin and arc modes) |
 
 Copy both to the Jetson (for example `~/rover_bridge/`) and run from that folder. ROS 2 Humble and `pyserial` are needed.
@@ -147,6 +148,7 @@ The rover has no encoders, so the node assumes speed is proportional to the comm
 ## Notes
 
 - The Jetson's header UART corrupts replies of 16 bytes or more (every full 16-byte block comes back as zeros). `OK`, `ERR`, `PONG` and `FAILSAFE` are short enough; the `ID`, `?` and `C ?` replies are not readable here.
+- `rover_link.py raw "T 1 80"` cannot test a motor: closing the port sends a stop that cancels the 1.5 s pulse. Use `motor_test.py`, which keeps the port open.
 - The first byte after opening the port is lost, so `RoverLink` sends a newline and flushes first.
 
 ## Status
