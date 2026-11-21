@@ -30,9 +30,11 @@ extern TIM_HandleTypeDef  htim1;
 extern TIM_HandleTypeDef  htim2;
 extern UART_HandleTypeDef huart1;
 
+TIM_HandleTypeDef htim3;   /* motor 2 only; set up here, not in CubeMX, so PA9/PA10 stay free for the flasher */
+
 
 /* ---- Config -------------------------------------------------------------- */
-#define FW_VERSION      "1.0"
+#define FW_VERSION      "1.1"
 #define NUM_MOTORS      4
 #define DEF_LIMIT       255     /* cap on any commanded speed */
 #define DEF_RAMP        10      /* speed units added or removed per RAMP_PERIOD_MS */
@@ -53,17 +55,18 @@ extern UART_HandleTypeDef huart1;
 typedef enum { SIDE_LEFT = 0, SIDE_RIGHT = 1 } Side;
 
 typedef struct {
-    TIM_HandleTypeDef *tim;
+    TIM_HandleTypeDef *tim_fwd;
     uint32_t           ch_fwd;
+    TIM_HandleTypeDef *tim_rev;
     uint32_t           ch_rev;
 } MotorPins;
 
 /* First pin of each pair is forward. Wheel positions confirmed with the T test, 2026-11-17. */
 static const MotorPins pins[NUM_MOTORS] = {
-    { &htim1, TIM_CHANNEL_1, TIM_CHANNEL_2 },   /* motor 1 front left:  PA8  fwd, PA9  rev */
-    { &htim1, TIM_CHANNEL_3, TIM_CHANNEL_4 },   /* motor 2 back left:   PA10 fwd, PA11 rev */
-    { &htim2, TIM_CHANNEL_3, TIM_CHANNEL_4 },   /* motor 3 front right: PA2  fwd, PA3  rev */
-    { &htim2, TIM_CHANNEL_1, TIM_CHANNEL_2 },   /* motor 4 back right:  PA0  fwd, PA1  rev */
+    { &htim1, TIM_CHANNEL_1, &htim3, TIM_CHANNEL_4 },   /* motor 1 front left:  PA8  fwd, PB1  rev */
+    { &htim3, TIM_CHANNEL_3, &htim1, TIM_CHANNEL_4 },   /* motor 2 back left:   PB0  fwd, PA11 rev */
+    { &htim2, TIM_CHANNEL_3, &htim2, TIM_CHANNEL_4 },   /* motor 3 front right: PA2  fwd, PA3  rev */
+    { &htim2, TIM_CHANNEL_1, &htim2, TIM_CHANNEL_2 },   /* motor 4 back right:  PA0  fwd, PA1  rev */
 };
 
 
@@ -143,14 +146,14 @@ static void motor_apply(int idx, int16_t speed)
     uint32_t         duty = (uint32_t)(speed < 0 ? -speed : speed) * pwm_arr / 255u;
 
     if (speed > 0) {
-        __HAL_TIM_SET_COMPARE(m->tim, m->ch_rev, 0);
-        __HAL_TIM_SET_COMPARE(m->tim, m->ch_fwd, duty);
+        __HAL_TIM_SET_COMPARE(m->tim_rev, m->ch_rev, 0);
+        __HAL_TIM_SET_COMPARE(m->tim_fwd, m->ch_fwd, duty);
     } else if (speed < 0) {
-        __HAL_TIM_SET_COMPARE(m->tim, m->ch_fwd, 0);
-        __HAL_TIM_SET_COMPARE(m->tim, m->ch_rev, duty);
+        __HAL_TIM_SET_COMPARE(m->tim_fwd, m->ch_fwd, 0);
+        __HAL_TIM_SET_COMPARE(m->tim_rev, m->ch_rev, duty);
     } else {
-        __HAL_TIM_SET_COMPARE(m->tim, m->ch_fwd, 0);
-        __HAL_TIM_SET_COMPARE(m->tim, m->ch_rev, 0);
+        __HAL_TIM_SET_COMPARE(m->tim_fwd, m->ch_fwd, 0);
+        __HAL_TIM_SET_COMPARE(m->tim_rev, m->ch_rev, 0);
     }
 }
 
@@ -209,6 +212,7 @@ static void set_defaults(void)
     pwm_arr     = DEF_PWM_ARR;
     __HAL_TIM_SET_AUTORELOAD(&htim1, pwm_arr);
     __HAL_TIM_SET_AUTORELOAD(&htim2, pwm_arr);
+    __HAL_TIM_SET_AUTORELOAD(&htim3, pwm_arr);
 }
 
 
@@ -241,6 +245,7 @@ static void cmd_config(char **t, int n)
             pwm_arr = TIMER_HZ / (uint32_t)a - 1;
             __HAL_TIM_SET_AUTORELOAD(&htim1, pwm_arr);
             __HAL_TIM_SET_AUTORELOAD(&htim2, pwm_arr);
+            __HAL_TIM_SET_AUTORELOAD(&htim3, pwm_arr);
             reply("OK\n");
         }
         else reply("ERR\n");
@@ -363,14 +368,47 @@ void rover_boot_check(void)
 }
 
 
+/* TIM3 CH3/CH4 on PB0/PB1 (default pin map, no remap): motor 2, same clock and period as TIM1/TIM2 */
+static void tim3_init(void)
+{
+    GPIO_InitTypeDef   gpio = {0};
+    TIM_OC_InitTypeDef oc   = {0};
+
+    __HAL_RCC_TIM3_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    htim3.Instance               = TIM3;
+    htim3.Init.Prescaler         = 0;
+    htim3.Init.CounterMode       = TIM_COUNTERMODE_UP;
+    htim3.Init.Period            = DEF_PWM_ARR;
+    htim3.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
+    htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    if (HAL_TIM_PWM_Init(&htim3) != HAL_OK) Error_Handler();
+
+    oc.OCMode     = TIM_OCMODE_PWM1;
+    oc.Pulse      = 0;
+    oc.OCPolarity = TIM_OCPOLARITY_HIGH;
+    oc.OCFastMode = TIM_OCFAST_DISABLE;
+    if (HAL_TIM_PWM_ConfigChannel(&htim3, &oc, TIM_CHANNEL_3) != HAL_OK) Error_Handler();
+    if (HAL_TIM_PWM_ConfigChannel(&htim3, &oc, TIM_CHANNEL_4) != HAL_OK) Error_Handler();
+
+    gpio.Pin   = GPIO_PIN_0 | GPIO_PIN_1;
+    gpio.Mode  = GPIO_MODE_AF_PP;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOB, &gpio);
+}
+
+
 void rover_init(void)
 {
     reset_cause = read_reset_cause();
 
+    tim3_init();
+
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
@@ -424,6 +462,7 @@ void rover_fault(void)
 {
     TIM1->BDTR &= ~TIM_BDTR_MOE;
     TIM2->CCER  = 0;
+    TIM3->CCER  = 0;
     for (;;) {}
 }
 

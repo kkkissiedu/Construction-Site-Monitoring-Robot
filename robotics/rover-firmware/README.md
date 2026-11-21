@@ -10,10 +10,12 @@ STM32F103C6 firmware that drives the rover's four wheel motors from text command
 
 | Motor | Wheel | Forward pin | Reverse pin | Timer |
 |-------|-------|-------------|-------------|-------|
-| 1 | front left  | PA8  | PA9  | TIM1 CH1 / CH2 |
-| 2 | back left   | PA10 | PA11 | TIM1 CH3 / CH4 |
+| 1 | front left  | PA8  | PB1  | TIM1 CH1 / TIM3 CH4 |
+| 2 | back left   | PB0  | PA11 | TIM3 CH3 / TIM1 CH4 |
 | 3 | front right | PA2  | PA3  | TIM2 CH3 / CH4 |
 | 4 | back right  | PA0  | PA1  | TIM2 CH1 / CH2 |
+
+PA9 and PA10 drive nothing: they stay free for the USB-UART adapter (the chip's built-in bootloader uses them), so the adapter can stay wired. A motor's two pins may sit on different timers; that is fine because only one of them is ever on, and all timers share the same clock and period.
 
 PWM defaults to about 1.1 kHz with a 16-bit period, as in the original firmware. `C PWM` raises it up to 20 kHz.
 
@@ -28,7 +30,7 @@ Lines end in `\n` and are case-insensitive. Speeds are signed integers from -255
 | `S` | stop everything now | `OK` |
 | `P` | ping | `PONG` |
 | `?` | current ramped speeds | `S <tick_ms> <m1> <m2> <m3> <m4>` |
-| `ID` | firmware version and last reset cause | `ID rover-fw 1.0 F103C6 rst=<cause>` |
+| `ID` | firmware version and last reset cause | `ID rover-fw 1.1 F103C6 rst=<cause>` |
 | `BOOT` | reboot into the ST bootloader (no BOOT0 jumper) | `OK` |
 | `C ?` | print the settings | `C LIMIT=… RAMP=… FAIL=… PWM=… SIDE=… SIGN=…` |
 | `C LIMIT <1-255>` | speed cap | `OK` |
@@ -51,25 +53,26 @@ cmake --build build
 arm-none-eabi-objcopy -O binary build/rover-firmware.elf rover-firmware.bin
 ```
 
-The image is about 12.6 KB of flash and 2.4 KB of RAM.
+The image is about 12.8 KB of flash and 2.5 KB of RAM.
 
 ## Flash
 
 With the wheels lifted, using a USB-UART adapter and the chip's built-in bootloader:
 
-1. Disconnect the motor wires on PA9 and PA10, which share the bootloader pins.
-2. Adapter RXD to PA9, TXD to PA10, ground to ground. Put BOOT0 on 1 and press reset, or send `BOOT` over the Jetson link.
+1. Adapter RXD to PA9, TXD to PA10, ground to ground. No motor wire uses these pins, so the adapter can stay connected.
+2. Put BOOT0 on 1 and press reset, or send `BOOT` over the Jetson link. Set BOOT0 before connecting the adapter's TXD wire to PA10 if an older firmware (1.0, which drove PA10) may be running.
 3. `python -m stm32loader -p COM8 -f F1 -b 115200 -a 0x08000000 -e -w -v rover-firmware.bin`
-4. BOOT0 back to 0, reconnect the motor wires, reset.
+4. BOOT0 back to 0, reset.
 
-A debug probe on the SWD header (PA13, PA14) avoids the wire changes.
+A debug probe on the SWD header (PA13, PA14) is an alternative.
 
 ## Notes
 
 - `rover-firmware.ioc` is the CubeMX project. It does not make CubeMX generate `SysTick_Handler` or the fault handlers, so they are defined in `Src/rover.c`. Delete them there if you turn generation on.
+- Motor 2 (and motor 1's reverse pin) use TIM3 on PB0/PB1. TIM3 is set up in `Src/rover.c` (`tim3_init`), not in CubeMX, so regenerating the project cannot put PA9 and PA10 back to PWM.
 - `Src/rover.c` and `Inc/rover.h` hold all the application code; `main.c` only has three hooks in its USER CODE blocks.
 - `RECOVERED_CONFIG.md` records the clock, timer and pin setup recovered from the original firmware.
 
 ## Status
 
-Bench-tested with the wheels lifted: each motor alone, forward and spin commands, the failsafe, `ID`, and the `C` settings (16 kHz PWM, speed cap, direction flip and side swap all behave as described). `BOOT` is not yet tested on hardware. The Jetson is connected and drives the rover through `robotics/rover-bridge/`.
+Firmware 1.1 (PA9 and PA10 freed, 2026-11-21) was flashed and each of the four motors confirmed forward, and the two left motors in reverse, with the wheels lifted. Version 1.0 was bench-tested with the wheels lifted: each motor alone, forward and spin commands, the failsafe, `ID`, and the `C` settings (16 kHz PWM, speed cap, direction flip and side swap all behave as described). `BOOT` is not yet tested on hardware. The Jetson is connected and drives the rover through `robotics/rover-bridge/`.
