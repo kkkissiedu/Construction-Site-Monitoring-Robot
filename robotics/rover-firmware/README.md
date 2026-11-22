@@ -55,6 +55,10 @@ arm-none-eabi-objcopy -O binary build/rover-firmware.elf rover-firmware.bin
 
 The image is about 12.8 KB of flash and 2.5 KB of RAM.
 
+### Self-test build
+
+For checking the wiring with no Jetson attached (the adapter on PA9/PA10 is not a command link), build with `-DCMAKE_C_FLAGS=-DSELFTEST`. Fifteen seconds after reset each motor runs forward then reverse by itself, 1.5 s per pulse, 5 s apart, in the order front-left, back-left, front-right, back-right, then the rover stays still. Wheels lifted. Reflash the normal build afterwards.
+
 ## Flash
 
 With the wheels lifted, using a USB-UART adapter and the chip's built-in bootloader:

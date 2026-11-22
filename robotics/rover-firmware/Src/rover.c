@@ -435,6 +435,33 @@ void rover_init(void)
 }
 
 
+#ifdef SELFTEST
+/* Self-test build (-DSELFTEST): no commands needed. SELFTEST_LEAD_MS after reset each motor runs forward, then
+ * reverse, one pulse per SELFTEST_STEP_MS, in the order front-left, back-left, front-right, back-right. */
+#define SELFTEST_LEAD_MS  15000u
+#define SELFTEST_STEP_MS  5000u
+#define SELFTEST_SPEED    120
+
+static void selftest_poll(uint32_t now)
+{
+    static int32_t last = -1;
+    int32_t        step;
+
+    if (now < SELFTEST_LEAD_MS) return;
+
+    step = (int32_t)((now - SELFTEST_LEAD_MS) / SELFTEST_STEP_MS);
+    if (step >= 2 * NUM_MOTORS || step == last) return;
+
+    last = step;
+    stop_all_now();
+    test_motor         = (uint8_t)(step / 2);
+    target[test_motor] = (int16_t)(((step % 2) ? -SELFTEST_SPEED : SELFTEST_SPEED) * m_sign[test_motor]);
+    test_end           = now + TEST_MS;
+    test_active        = 1;
+}
+#endif
+
+
 void rover_poll(void)
 {
     uint32_t now = HAL_GetTick();
@@ -442,6 +469,9 @@ void rover_poll(void)
     IWDG->KR = 0xAAAA;
 
     read_commands();
+#ifdef SELFTEST
+    selftest_poll(now);
+#endif
 
     if (test_active && (int32_t)(now - test_end) >= 0) {
         target[test_motor] = 0;

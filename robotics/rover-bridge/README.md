@@ -103,7 +103,7 @@ A GY-521 (MPU-6050) on the Jetson's I2C bus lets the bridge close the loop on th
 Power it from 3.3 V: the board's pull-ups tie to VCC, and 5 V would reach the Jetson's pins. On this rover the board's axes are X forward, Y left, Z up (the ROS convention), so a positive gyro Z is a left turn, the same sign as `/cmd_vel`. `python3 mpu6050.py axes` finds the axes from a nose-up and a right-side-down tilt.
 
 ```bash
-python3 rover_imu.py &        # keep the rover still for the first 2 s
+python3 rover_imu.py &        # keep the rover still for the first 2 s (rover_autostart.sh starts it only if the chip answers: USE_IMU=auto)
 python3 rover_bridge.py       # closed loop when /imu/data_raw is flowing, open loop otherwise
 ```
 
