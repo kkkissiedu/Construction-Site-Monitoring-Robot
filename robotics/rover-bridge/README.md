@@ -25,7 +25,7 @@ The port is `/dev/ttyTHS1`. The `jetson` user is already in `dialout`, so no `su
 | `run_remote.sh` | starts the IMU node, the bridge and the phone remote together |
 | `mpu6050.py` | reads the MPU-6050 (GY-521) over I2C with no extra libraries; `probe` and `axes` modes |
 | `rover_imu.py` | ROS 2 node: publishes the IMU as `/imu/data_raw` at 100 Hz, gyro bias removed |
-| `rover_autostart.sh` | supervisor: starts the IMU node, bridge and phone remote and restarts them if one stops |
+| `rover_autostart.sh` | supervisor: starts the IMU node (if present), bridge and phone remote and restarts them if one stops; also runs the phone sensor driver (SensorStream) on its own restart loop |
 | `install_autostart.sh` | adds a user-cron `@reboot` line so the rover software starts at boot (`remove` undoes it) |
 | `setup_ap.sh` | one-time: gives the Jetson its own Wi-Fi network (`rover-jetson`) as a last-resort fallback and sets the network order |
 | `check_network.sh` | shows the Wi-Fi connection, address, whether the remote answers, and the phone URL |
@@ -145,6 +145,10 @@ The Jetson hosts its own network, `rover-jetson`, so the rover works anywhere wi
 | `bash setup_ap.sh remove` | delete the own network |
 
 Add `now` to switch immediately. While the Jetson hosts the network it has no internet. A phone keeps its own mobile data for internet. Waveshare's `ugv_jetson` does the same job with AccessPopup, which checks every 2 minutes and only starts its hotspot when no known network is in range. `bash check_network.sh` shows the current state.
+
+### Phone sensor driver
+
+`rover_autostart.sh` also starts the SensorStream driver (`USE_PHONE=1`, built in `~/sensorstream_ws`) so it is ready after every boot. It listens on port 5678; join the phone to `rover-jetson`, open the SensorStream app and connect to `10.42.0.1:5678` (the driver also prints a QR code in `~/rover_logs/sensorstream.log`). Topics: `color_image/compressed`, `depth_image`, `imu/data`, `gps/fix`. Measured over the Jetson's own network: colour and depth about 30 fps, IMU about 49 Hz, 5 ms round trip. The listener has no authentication, so it relies on the Wi-Fi password. The phone's timestamps are not ROS time (the Jetson's clock has no source to set it), so consumers must restamp on arrival. The driver has its own restart loop, so a driver crash does not stop the drive software.
 
 ## Dead zone
 
