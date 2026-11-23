@@ -32,6 +32,8 @@ imu_present() {
 run_phone() {                               # the driver listens for the phone; restart it if it ever exits
     while true; do
         pkill -f "sensorstream_nod[e]" 2> /dev/null
+        # trim here, not in the main loop: the driver is stopped now, so no open file is left behind
+        [ -f "$LOG/sensorstream.log" ] && tail -n 2000 "$LOG/sensorstream.log" > "$LOG/sensorstream.tmp" && mv "$LOG/sensorstream.tmp" "$LOG/sensorstream.log"
         ros2 run sensorstream_driver sensorstream_node >> "$LOG/sensorstream.log" 2>&1
         sleep 3
     done
@@ -51,7 +53,7 @@ if [ "$USE_PHONE" = 1 ] && [ -f "$PHONE_WS" ]; then
 fi
 
 while true; do
-    for f in imu bridge remote sensorstream; do          # keep the logs from growing for ever
+    for f in imu bridge remote; do          # keep the logs from growing for ever
         [ -f "$LOG/$f.log" ] && tail -n 2000 "$LOG/$f.log" > "$LOG/$f.tmp" && mv "$LOG/$f.tmp" "$LOG/$f.log"
     done
 

@@ -4,6 +4,8 @@
 #   bash setup_ap.sh              own network is on at every boot (the default, "rover" mode)
 #   bash setup_ap.sh fallback     own network only when no saved network is in range
 #   bash setup_ap.sh online       own network off; join the best saved network now (for apt, pip, updates)
+#   bash setup_ap.sh hotspot      own network off; join the saved iPhone hotspot now and prefer it over home Wi-Fi
+#                                 (the sensor phone then sends over its own fast 5 GHz hotspot; "rover" mode undoes it)
 #   bash setup_ap.sh remove       delete the own network
 # Add "now" to switch immediately:  bash setup_ap.sh rover now   (the Jetson leaves its current Wi-Fi)
 SSID="rover-jetson"
@@ -49,6 +51,17 @@ case "$MODE" in
             | sort -t: -k1 -nr | cut -d: -f2- | while read -r name; do
             sudo nmcli con up "$name" > /dev/null 2>&1 && { echo "connected to $name"; exit 0; }
         done
+        exit 0
+        ;;
+    hotspot)
+        exists && sudo nmcli con modify "$CON" connection.autoconnect-priority -10
+        set_client_priorities
+        phone=$(nmcli -t -f NAME,TYPE con show | awk -F: '$2=="802-11-wireless" && /iPhone/{print $1; exit}')
+        [ -n "$phone" ] || { echo "no saved iPhone hotspot (join it once from the Jetson first)"; exit 1; }
+        sudo nmcli con modify "$phone" connection.autoconnect-priority 20
+        echo "own network is off; joining $phone (turn its Personal Hotspot on first)"
+        sudo nmcli con up "$phone" || exit 1
+        echo "Jetson address: $(ip -4 -o addr show "$IFACE" | awk '{print $4}' | cut -d/ -f1)"
         exit 0
         ;;
     rover)    AP_PRIO=100 ;;

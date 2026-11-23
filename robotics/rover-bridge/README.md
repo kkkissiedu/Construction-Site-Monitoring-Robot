@@ -147,6 +147,7 @@ The Jetson hosts its own network, `rover-jetson`, so the rover works anywhere wi
 | `bash setup_ap.sh` | own network on at every boot (default) |
 | `bash setup_ap.sh fallback` | own network only when no saved network is in range |
 | `bash setup_ap.sh online` | own network off; join the best saved network now (for apt, pip, updates) |
+| `bash setup_ap.sh hotspot` | own network off; join the saved iPhone hotspot now and prefer it over home Wi-Fi. `bash setup_ap.sh` (no argument) undoes it |
 | `bash setup_ap.sh remove` | delete the own network |
 
 Add `now` to switch immediately. While the Jetson hosts the network it has no internet. A phone keeps its own mobile data for internet. Waveshare's `ugv_jetson` does the same job with AccessPopup, which checks every 2 minutes and only starts its hotspot when no known network is in range. `bash check_network.sh` shows the current state.
