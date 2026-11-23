@@ -119,6 +119,10 @@ class RoverRemote(Node):
         self.depth  = None          # (width, height, row length in pixels, raw bytes)
         self.seq    = {"color": 0, "depth": 0}
         self.seen   = {"color": 0.0, "depth": 0.0}
+        self.rate   = {"color": 0.0, "depth": 0.0}      # frames per second arriving here, smoothed
+        self.timing = {"color": 0.0, "depth": 0.0}      # milliseconds to turn one frame into a browser JPEG, smoothed
+        self.cache  = {"color": None, "depth": None}    # (frame number, browser JPEG) of the last rendered frame
+        self.cache_lock = threading.Lock()
 
         self.create_subscription(CompressedImage, "color_image/compressed", self.on_color, qos_profile_sensor_data)
         self.create_subscription(Image,           "depth_image",            self.on_depth, qos_profile_sensor_data)
@@ -156,11 +160,17 @@ class RoverRemote(Node):
             self.publish(0.0, 0.0)
 
     # ---- camera ---------------------------------------------------------------
+    def note_arrival(self, view: str) -> None:
+        now = time.monotonic()
+        if self.seen[view] and now > self.seen[view]:
+            self.rate[view] += 0.1 * (1.0 / (now - self.seen[view]) - self.rate[view])
+        self.seen[view] = now
+
     def on_color(self, msg: CompressedImage) -> None:
         with self.frames:
             self.color = bytes(msg.data)
-            self.seq["color"]  += 1
-            self.seen["color"]  = time.monotonic()
+            self.seq["color"] += 1
+            self.note_arrival("color")
             self.frames.notify_all()
 
     def on_depth(self, msg: Image) -> None:
@@ -168,8 +178,8 @@ class RoverRemote(Node):
             return
         with self.frames:
             self.depth = (msg.width, msg.height, msg.step // 2, bytes(msg.data))
-            self.seq["depth"]  += 1
-            self.seen["depth"]  = time.monotonic()
+            self.seq["depth"] += 1
+            self.note_arrival("depth")
             self.frames.notify_all()
 
     def video_age(self):
@@ -183,6 +193,20 @@ class RoverRemote(Node):
             if self.seq[view] == last_seq:
                 return None
             return self.seq[view], (self.color if view == "color" else self.depth)
+
+    def jpeg_for(self, view: str, seq: int, raw):
+        """The browser JPEG for one frame, rendered once and shared by every browser that is watching."""
+        with self.cache_lock:
+            cached = self.cache[view]
+        if cached and cached[0] == seq:
+            return cached[1]
+
+        began = time.monotonic()
+        jpeg  = self.render(view, raw)
+        self.timing[view] += 0.1 * ((time.monotonic() - began) * 1000.0 - self.timing[view])
+        with self.cache_lock:
+            self.cache[view] = (seq, jpeg)
+        return jpeg
 
     def render(self, view: str, raw):
         """Return a JPEG for the browser, or None if the frame cannot be shown."""
@@ -259,12 +283,13 @@ class Handler(BaseHTTPRequestHandler):
                 if time.monotonic() - last_sent < period:
                     continue                        # above the frame-rate limit: drop this one
 
-                jpeg = node.render(view, got[1])
+                began = time.monotonic()
+                jpeg  = node.jpeg_for(view, got[0], got[1])
                 if jpeg is None:
                     continue
                 self.wfile.write(f"--{BOUNDARY}\r\nContent-Type: image/jpeg\r\nContent-Length: {len(jpeg)}\r\n\r\n".encode()
                                  + jpeg + b"\r\n")
-                last_sent = time.monotonic()
+                last_sent = began                   # the frame-rate limit counts from when this frame was picked
         except OSError:                             # the browser closed the stream
             return
 
@@ -280,7 +305,9 @@ class Handler(BaseHTTPRequestHandler):
             node = self.server.node
             body = json.dumps({"ok": True, "max_linear": node.max_linear, "max_angular": node.max_angular,
                                "battery_mv": read_battery_mv(), "video_age": node.video_age(),
-                               "video": cv2 is not None})
+                               "video": cv2 is not None,
+                               "color_hz": round(node.rate["color"], 1), "depth_hz": round(node.rate["depth"], 1),
+                               "color_ms": round(node.timing["color"], 1), "depth_ms": round(node.timing["depth"], 1)})
             self.reply(200, body.encode())
         elif url.path == "/video":
             view = query.get("view", ["color"])[0]
