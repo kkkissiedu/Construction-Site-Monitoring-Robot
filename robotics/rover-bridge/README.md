@@ -21,7 +21,7 @@ The port is `/dev/ttyTHS1`. The `jetson` user is already in `dialout`, so no `su
 | `rover_link.py` | `RoverLink` class (`ping`, `drive`, `stop`, `configure`) and a small command-line test |
 | `rover_bridge.py` | ROS 2 node: `/cmd_vel` to `V left right`, with a timeout stop and automatic reconnect |
 | `rover_remote.py` | ROS 2 node: serves a phone web page and publishes the joystick as `/cmd_vel` |
-| `remote.html` | the phone page: touch joystick, speed slider, STOP button |
+| `remote.html` | the phone page: live camera or depth view with the touch joystick over it, speed slider, STOP button |
 | `run_remote.sh` | starts the IMU node, the bridge and the phone remote together |
 | `mpu6050.py` | reads the MPU-6050 (GY-521) over I2C with no extra libraries; `probe` and `axes` modes |
 | `rover_imu.py` | ROS 2 node: publishes the IMU as `/imu/data_raw` at 100 Hz, gyro bias removed |
@@ -59,6 +59,7 @@ Open `http://<jetson-ip>:8080/?key=<key>` (or `http://ubuntu.local:8080/?key=<ke
 
 - The joystick only drives while a finger is on it. Letting go sends a stop; locking the phone, switching apps or losing Wi-Fi stops the rover too, and the node stops it after 0.4 s without drive messages.
 - The page and the API (`GET /ping`, `POST /drive`, `POST /stop`) refuse requests without the key. There is no encryption, so anyone on the network who has the key can drive the rover: keep it private.
+- **Live view:** the page shows the phone sensor's camera behind the stick, with buttons for Colour, Depth (a heat map, red near and blue far, 0.2 to 4 m, black where there is no reading) and Off, and the Jetson's battery voltage next to the link light. The Jetson decodes each JPEG at half size (1920x1440 to 960x720) and sends motion JPEG at 12 fps per browser, about 12 ms of one core per frame. If the phone stops sending, the page says "no video from the phone" and reopens the stream when frames return. Parameters `video_fps`, `video_reduce`, `video_quality`, `depth_max_mm`. The depth units are assumed to be millimetres (to be verified with a tape measure).
 - The speed slider (10-100%) scales the stick. Defaults top out at 0.2 m/s and 1.5 rad/s, which the bridge turns into about 100/255 motor power.
 
 | Remote parameter | Default | Meaning |
@@ -66,6 +67,10 @@ Open `http://<jetson-ip>:8080/?key=<key>` (or `http://ubuntu.local:8080/?key=<ke
 | `port` | 8080 | web server port |
 | `max_linear` | 0.2 | m/s at full stick and 100% slider |
 | `max_angular` | 1.5 | rad/s at full sideways stick and 100% slider |
+| `video_fps` | 12 | frames per second sent to each browser |
+| `video_reduce` | 2 | the JPEG is decoded at 1/N size (1, 2, 4 or 8) |
+| `video_quality` | 70 | JPEG quality of the frames sent to the browser |
+| `depth_max_mm` | 4000 | farthest depth shown in the Depth view |
 
 For full motor power on the floor, tune both nodes so full stick equals full command:
 

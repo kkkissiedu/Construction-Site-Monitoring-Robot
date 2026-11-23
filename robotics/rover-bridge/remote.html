@@ -19,7 +19,7 @@
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   }
   .app {
-    height: 100%; display: flex; flex-direction: column; gap: 14px;
+    height: 100%; display: flex; flex-direction: column; gap: 12px;
     padding: max(14px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
   }
   header { display: flex; align-items: center; justify-content: space-between; }
@@ -30,10 +30,30 @@
   }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); }
   .dot.on { background: var(--ok); }
-  .stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+  /* the camera fills the stage; the stick floats over its lower middle */
+  .stage { flex: 1; position: relative; min-height: 0; border-radius: 14px; overflow: hidden; background: #000; }
+  #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  #nofeed {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 15px; pointer-events: none;
+  }
+  #nofeed[hidden] { display: none; }
+  .views { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px; z-index: 2; }
+  .views button {
+    border: 0; border-radius: 999px; padding: 7px 14px; font-size: 13px; color: var(--text);
+    background: rgba(27,34,48,.82); touch-action: manipulation;
+  }
+  .views button.on { background: var(--knob); }
+  #legend {
+    position: absolute; top: 8px; right: 8px; z-index: 2; font-size: 11px; color: #fff; padding: 4px 8px;
+    border-radius: 8px; background: rgba(0,0,0,.55); pointer-events: none;
+  }
+  #legend[hidden] { display: none; }
   #pad {
-    width: min(78vw, 52vh); aspect-ratio: 1; border-radius: 50%; position: relative;
-    background: radial-gradient(circle at 50% 50%, #243047 0%, var(--panel) 70%);
+    position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+    width: min(46vw, 34vh); aspect-ratio: 1; border-radius: 50%; z-index: 2;
+    background: radial-gradient(circle at 50% 50%, rgba(36,48,71,.75) 0%, rgba(27,34,48,.55) 70%);
     border: 2px solid var(--ring); touch-action: none;
   }
   #pad::before, #pad::after { content: ""; position: absolute; background: var(--ring); opacity: .55; }
@@ -49,7 +69,7 @@
   .speed label { display: block; font-size: 14px; margin-bottom: 8px; }
   input[type=range] { width: 100%; accent-color: var(--knob); touch-action: pan-x; }
   #stop {
-    height: 16vh; min-height: 84px; border: 0; border-radius: 18px; background: var(--bad);
+    height: 14vh; min-height: 76px; border: 0; border-radius: 18px; background: var(--bad);
     color: #fff; font-size: 30px; font-weight: 700; letter-spacing: 2px; touch-action: manipulation;
   }
   #stop:active { filter: brightness(.85); }
@@ -62,7 +82,17 @@
     <div class="pill"><span id="dot" class="dot"></span><span id="link">connecting</span></div>
   </header>
 
-  <div class="stage"><div id="pad"><div id="knob"></div></div></div>
+  <div class="stage">
+    <img id="video" alt="">
+    <div id="nofeed">no video</div>
+    <div class="views">
+      <button data-view="color" class="on">Colour</button>
+      <button data-view="depth">Depth</button>
+      <button data-view="off">Off</button>
+    </div>
+    <div id="legend" hidden>red near, blue far, black no reading</div>
+    <div id="pad"><div id="knob"></div></div>
+  </div>
   <div class="readout" id="readout">hold the stick to drive, let go to stop</div>
 
   <div class="speed">
@@ -77,6 +107,7 @@
 const KEY       = new URLSearchParams(location.search).get('key') || '';
 const DEADZONE  = 0.12;
 const SEND_MS   = 100;
+const STALE_S   = 2;
 
 const pad      = document.getElementById('pad');
 const knob     = document.getElementById('knob');
@@ -85,15 +116,19 @@ const label    = document.getElementById('speedLabel');
 const readout  = document.getElementById('readout');
 const dot      = document.getElementById('dot');
 const linkText = document.getElementById('link');
+const video    = document.getElementById('video');
+const nofeed   = document.getElementById('nofeed');
+const legend   = document.getElementById('legend');
 
 let dragging = false, sx = 0, sy = 0;
 let maxLinear = 0.2, lastOk = 0;
+let view = 'color', feedFresh = false, battery = '';
 
 function setLink(ok) {
   if (ok) lastOk = Date.now();
   const alive = Date.now() - lastOk < 2500;
   dot.classList.toggle('on', alive);
-  linkText.textContent = alive ? 'connected' : 'no link, rover stops';
+  linkText.textContent = alive ? 'connected' + battery : 'no link, rover stops';
 }
 
 async function call(method, path, body) {
@@ -108,6 +143,15 @@ async function call(method, path, body) {
     setLink(false);
     return null;
   }
+}
+
+function setView(v) {
+  view = v;
+  document.querySelectorAll('.views button').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
+  legend.hidden = v !== 'depth';
+  if (v === 'off') video.removeAttribute('src');
+  else video.src = '/video?key=' + encodeURIComponent(KEY) + '&view=' + v + '&t=' + Date.now();
+  nofeed.hidden = v === 'off' || feedFresh;
 }
 
 function showSpeed() {
@@ -155,6 +199,8 @@ document.getElementById('stop').addEventListener('click', () => {
   call('POST', '/stop');
 });
 
+document.querySelectorAll('.views button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+video.addEventListener('error', () => { if (view !== 'off') setTimeout(() => setView(view), 1500); });
 slider.addEventListener('input', showSpeed);
 
 setInterval(() => {
@@ -163,11 +209,19 @@ setInterval(() => {
 
 setInterval(async () => {
   const info = await call('GET', '/ping');
-  if (info) { maxLinear = info.max_linear; showSpeed(); }
-  else setLink(false);
+  if (!info) { setLink(false); return; }
+  maxLinear = info.max_linear; showSpeed();
+  battery = info.battery_mv ? ' · ' + (info.battery_mv / 1000).toFixed(1) + ' V' : '';
+
+  const fresh = info.video && info.video_age !== null && info.video_age < STALE_S;
+  if (fresh && !feedFresh && view !== 'off') setView(view);         // frames came back: reopen the stream
+  feedFresh = fresh;
+  nofeed.hidden = view === 'off' || fresh;
+  nofeed.textContent = info.video ? 'no video from the phone' : 'video is off on the Jetson';
 }, 1000);
 
 showSpeed();
+setView('color');
 </script>
 </body>
 </html>
